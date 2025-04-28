@@ -1,5 +1,3 @@
-# meme.py (Nitter Version for Telegram with Delay and New Instance)
-
 import ssl
 import requests
 import random
@@ -16,6 +14,8 @@ requests.packages.urllib3.disable_warnings()
 NITTER_BASE_URL = "https://nitter.net"  # Switched to a new Nitter instance
 SEARCH_QUERY = "(breaking OR news) (world OR foreign)"
 TWEET_LIMIT = 50
+MAX_RETRIES = 5  # Maximum retries before giving up
+RETRY_DELAY = 10  # Delay between retries (in seconds)
 
 # === TELEGRAM SETTINGS ===
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -28,38 +28,52 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
 # === SCRAPE TWEETS ===
 tweets = []
 
-try:
-    search_url = f"{NITTER_BASE_URL}/search?f=tweets&q={urllib.parse.quote_plus(SEARCH_QUERY)}&e-nativeretweets=on"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(search_url, headers=headers, verify=False)
+def fetch_tweets():
+    for attempt in range(MAX_RETRIES):
+        try:
+            search_url = f"{NITTER_BASE_URL}/search?f=tweets&q={urllib.parse.quote_plus(SEARCH_QUERY)}&e-nativeretweets=on"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(search_url, headers=headers, verify=False)
 
-    if response.status_code != 200:
-        print(f"[ERROR] Failed to fetch tweets: {response.status_code}")
-        exit(1)
+            if response.status_code == 429:  # Rate limit error
+                print(f"[ERROR] Rate-limited, retrying in {RETRY_DELAY} seconds...")
+                time.sleep(RETRY_DELAY)
+                continue  # Retry the request
 
-    soup = BeautifulSoup(response.text, "html.parser")
-    tweet_elements = soup.find_all("div", class_="timeline-item")
+            if response.status_code != 200:
+                print(f"[ERROR] Failed to fetch tweets: {response.status_code}")
+                return None
 
-    for elem in tweet_elements[:TWEET_LIMIT]:
-        content_elem = elem.find("div", class_="tweet-content")
-        user_elem = elem.find("a", class_="username")
-        date_elem = elem.find("span", class_="tweet-date")
-        link_elem = date_elem.find("a") if date_elem else None
+            soup = BeautifulSoup(response.text, "html.parser")
+            tweet_elements = soup.find_all("div", class_="timeline-item")
 
-        if content_elem and user_elem and link_elem:
-            tweets.append({
-                "content": content_elem.text.strip(),
-                "user": user_elem.text.strip().lstrip("@"),
-                "url": NITTER_BASE_URL + link_elem.get("href"),
-                "date": date_elem.text.strip()
-            })
+            for elem in tweet_elements[:TWEET_LIMIT]:
+                content_elem = elem.find("div", class_="tweet-content")
+                user_elem = elem.find("a", class_="username")
+                date_elem = elem.find("span", class_="tweet-date")
+                link_elem = date_elem.find("a") if date_elem else None
 
-    # Implementing delay between requests to avoid rate limiting
-    time.sleep(5)  # 5-second delay between fetches
+                if content_elem and user_elem and link_elem:
+                    tweets.append({
+                        "content": content_elem.text.strip(),
+                        "user": user_elem.text.strip().lstrip("@"),
+                        "url": NITTER_BASE_URL + link_elem.get("href"),
+                        "date": date_elem.text.strip()
+                    })
 
-except Exception as e:
-    print(f"\n[ERROR] Failed to scrape tweets: {e}")
-    exit(1)
+            # Implementing delay between requests to avoid rate limiting
+            time.sleep(10)  # 10-second delay between fetches
+            return tweets
+
+        except Exception as e:
+            print(f"\n[ERROR] Failed to scrape tweets (attempt {attempt + 1}): {e}")
+            time.sleep(RETRY_DELAY)
+            continue
+
+    print("[ERROR] Max retries reached. Exiting.")
+    return None
+
+tweets = fetch_tweets()
 
 if not tweets:
     print("\n[INFO] No tweets found! Try adjusting the query or checking the Nitter instance.")
