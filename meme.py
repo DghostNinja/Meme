@@ -1,131 +1,151 @@
 import os
 import random
 import requests
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime
 from bs4 import BeautifulSoup
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Telegram configuration
+# Telegram config
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-def get_trending_news():
-    """Get trending news from Google News (RSS) without API key"""
-    try:
-        url = "https://news.google.com/rss"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        # Use lxml parser (faster and more reliable)
-        soup = BeautifulSoup(response.content, 'lxml-xml')  # or 'xml' if lxml not available
-        items = soup.find_all('item')[:5]  # Get top 5 news items
-        
-        trending_news = []
-        for item in items:
-            title = item.title.text
-            # Remove the source from title (e.g., " - BBC News")
-            title = title.split(' - ')[0]
-            trending_news.append(title.strip())
-        
-        return trending_news
-    
-    except Exception as e:
-        logger.error(f"Error fetching trending news: {e}")
-        # Default fallback news
-        return [
-            "Bitcoin hits all-time high", 
-            "Elon Musk tweets about crypto", 
-            "NFT sales surge", 
-            "Web3 adoption growing", 
-            "Metaverse expansion continues"
-        ]
+class TrendScraper:
+    @staticmethod
+    def get_google_trends():
+        """Scrape trending search terms"""
+        try:
+            url = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=US"
+            soup = BeautifulSoup(requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}).content, 'lxml-xml')
+            return [item.title.text for item in soup.find_all('item')[:5]]
+        except Exception:
+            return ["Bitcoin ETF", "Solana Phone", "AI Crypto", "Meme Coin Rally", "NFT Gaming"]
 
-def generate_meme_coin_name(news_headline):
-    """Generate a meme coin name based on news headline"""
-    try:
-        # Common crypto suffixes
-        suffixes = ['Coin', 'Token', 'Inu', 'Fi', 'Swap', 'Moon', 'Rocket', 'Floki', 'Doge', 'Shib', 'Pump', 'Labs', 'DAO', 'Farm']
+    @staticmethod
+    def get_reddit_memes():
+        """Scrape trending meme topics from Reddit"""
+        try:
+            url = "https://www.reddit.com/r/memes/top.json?limit=5"
+            data = requests.get(url, headers={'User-Agent': 'MemeScraper'}).json()
+            return [post['data']['title'] for post in data['data']['children']]
+        except Exception:
+            return ["Doge to the moon", "WAGMI culture", "NGMI memes", "Based degeneracy", "Ape together strong"]
+
+    @staticmethod
+    def get_crypto_trends():
+        """Get trending crypto topics"""
+        try:
+            url = "https://api.coingecko.com/api/v3/search/trending"
+            data = requests.get(url).json()
+            return [coin['item']['name'] for coin in data['coins'][:3]] + \
+                   [nft['name'] for nft in data['nfts'][:2]]
+        except Exception:
+            return ["Pepe", "Wojak", "Based", "Degen", "ApeCoin"]
+
+class MemeCoinGenerator:
+    # Web3 hype components
+    PREFIXES = ["Based", "Degen", "Ape", "GM", "WAGMI", "NGMI", "PEPE", "Wojak", "Smol", "Chad"]
+    SUFFIXES = ["Inu", "Fi", "Swap", "Moon", "Rekt", "Maxi", "Labs", "DAO", "Farm", "Pad"]
+    NUMBERS = ["69", "420", "777", "10k", "1M"]
+    MEME_WORDS = ["Diamond", "Hands", "Bags", "Lambo", "Wen", "Ser", "Fren", "Copium", "Hopium"]
+
+    @classmethod
+    def generate_hype_name(cls, trend):
+        """Generate Web3-hyped coin name"""
+        # Clean the trend text
+        words = [w for w in re.findall(r'\b\w{3,}\b', trend) if not w.isdigit()]
         
-        # Process the headline
-        words = [w for w in news_headline.split() if w.isalpha()][:3]  # Take first 3 words, letters only
+        # 80% chance to add Web3 prefix
+        if random.random() > 0.2:
+            base = random.choice(cls.PREFIXES) + random.choice(["", " "])
+        else:
+            base = ""
         
-        # Combine with suffix
-        base_name = ''.join([w.capitalize() for w in words])
-        suffix = random.choice(suffixes)
+        # Build main name (mix trend words with meme words)
+        if words:
+            base += "".join([w.capitalize() for w in words[:2]])
+        else:
+            base += random.choice(cls.MEME_WORDS)
         
-        # 50% chance to add a number
+        # Add suffix and number
+        suffix = random.choice(cls.SUFFIXES)
+        if random.random() > 0.3:  # 70% chance for number
+            suffix += random.choice(cls.NUMBERS)
+        
+        return f"{base}{suffix}"
+
+    @classmethod
+    def generate_ticker(cls, name):
+        """Create exchange-style ticker"""
+        # Remove numbers first
+        clean_name = re.sub(r'\d+', '', name)
+        letters = [c for c in clean_name if c.isupper() or c.islower()]
+        
+        # Build 3-5 letter ticker
+        if len(letters) >= 3:
+            ticker = "".join(letters[:3]).upper()
+        else:
+            ticker = clean_name[:3].upper().ljust(3, 'X')
+        
+        # 50% chance to add number
         if random.random() > 0.5:
-            number = random.choice(['69', '420', '777', '1000', '2024', '999'])
-            return f"{base_name}{suffix}{number}"
+            ticker += random.choice(cls.NUMBERS[:2])
         
-        return f"{base_name}{suffix}"
-    
-    except Exception as e:
-        logger.error(f"Error generating meme coin name: {e}")
-        return "SuperDogeInu420"
+        return ticker[:5]
 
-def send_to_telegram(message):
-    """Send message to Telegram channel"""
-    try:
-        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-            logger.error("Telegram credentials not set")
-            return False
-        
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            'chat_id': TELEGRAM_CHAT_ID,
-            'text': message,
-            'parse_mode': 'HTML',
-            'disable_web_page_preview': True
-        }
-        
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        return True
+def send_telegram_report(assets):
+    """Send formatted report to Telegram"""
+    message = "🔥 *VIRAL MEME COIN FACTORY* 🔥\n\n"
+    message += "⚡ *Trending Right Now:* ⚡\n\n"
     
+    for trend, name, ticker in assets:
+        message += f"📈 *Trend:* `{trend}`\n"
+        message += f"🪙 *Coin Name:* `{name}`\n"
+        message += f"📊 *Ticker:* `{ticker}`\n"
+        message += f"💸 *Pair:* `{ticker}/USDT`\n"
+        message += f"🚀 *Potential:* `{random.randint(10,100)}x`\n\n"
+    
+    message += f"_Generated at {datetime.now().strftime('%Y-%m-%d %H:%M')}_"
+    
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={
+                'chat_id': TELEGRAM_CHAT_ID,
+                'text': message,
+                'parse_mode': 'MarkdownV2',
+                'disable_web_page_preview': True
+            }
+        )
     except Exception as e:
-        logger.error(f"Error sending to Telegram: {e}")
-        return False
+        logger.error(f"Telegram error: {e}")
 
 def main():
     try:
-        logger.info("Starting meme coin name generator...")
+        # Get all trending content
+        trends = (
+            TrendScraper.get_google_trends() + 
+            TrendScraper.get_reddit_memes() + 
+            TrendScraper.get_crypto_trends()
+        )[:8]  # Get top 8 trends
         
-        # Get trending news
-        news_items = get_trending_news()
-        logger.info(f"Found {len(news_items)} trending news items")
+        # Generate coin assets
+        assets = []
+        for trend in trends:
+            name = MemeCoinGenerator.generate_hype_name(trend)
+            ticker = MemeCoinGenerator.generate_ticker(name)
+            assets.append((trend, name, ticker))
         
-        # Generate meme coin names
-        meme_coins = []
-        for news in news_items:
-            coin_name = generate_meme_coin_name(news)
-            meme_coins.append((news, coin_name))
+        # Send report
+        send_telegram_report(assets)
+        logger.info("Generated viral coin ideas")
         
-        # Prepare Telegram message (simpler format to avoid API issues)
-        message = "🔥 *Trending Meme Coin Ideas* 🔥\n\n"
-        message += "*Based on today's news:*\n\n"
-        
-        for news, coin in meme_coins:
-            message += f"📰 {news}\n"
-            message += f"💰 *{coin}*\n\n"
-        
-        message += f"_Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}_"
-        
-        # Send to Telegram
-        if send_to_telegram(message):
-            logger.info("Message sent to Telegram successfully")
-        else:
-            logger.error("Failed to send message to Telegram")
-    
     except Exception as e:
-        logger.error(f"Error in main execution: {e}")
+        logger.error(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
