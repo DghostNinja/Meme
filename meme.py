@@ -1,18 +1,12 @@
-# meme.py (upgraded for Telegram)
+# meme.py (upgraded for Reddit/Google News, no SSL issues)
 
-import ssl
-import snscrape.modules.twitter as sntwitter
-import random
 import requests
 import os
-
-# SSL Fix: Trust all certificates (for GitHub Actions)
-ssl._create_default_https_context = ssl._create_unverified_context
-requests.packages.urllib3.disable_warnings()
+import random
 
 # === SETTINGS ===
-SEARCH_QUERY = "(breaking OR news) (world OR foreign) lang:en since:2025-04-25"
-TWEET_LIMIT = 50
+REDDIT_URL = "https://www.reddit.com/r/worldnews/hot.json?limit=50"
+HEADERS = {"User-Agent": "Mozilla/5.0"}  # pretend to be a browser
 
 # === TELEGRAM SETTINGS ===
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")  # Bot token from env
@@ -22,24 +16,18 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
     print("[ERROR] Telegram credentials not set.")
     exit(1)
 
-# === SCRAPE TWEETS ===
-tweets = []
+# === SCRAPE REDDIT POSTS ===
 try:
-    for i, tweet in enumerate(sntwitter.TwitterSearchScraper(SEARCH_QUERY).get_items()):
-        if i >= TWEET_LIMIT:
-            break
-        tweets.append({
-            'content': tweet.content,
-            'date': tweet.date.strftime('%Y-%m-%d %H:%M'),
-            'user': tweet.user.username,
-            'url': tweet.url
-        })
+    response = requests.get(REDDIT_URL, headers=HEADERS, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    posts = data["data"]["children"]
 except Exception as e:
-    print(f"\n[ERROR] Failed to scrape tweets: {e}")
+    print(f"[ERROR] Failed to fetch Reddit posts: {e}")
     exit(1)
 
-if not tweets:
-    print("\n[INFO] No tweets found! Try adjusting the query or checking your internet.")
+if not posts:
+    print("[INFO] No posts found.")
     exit(0)
 
 # === GENERATE MEME COIN NAMES ===
@@ -51,16 +39,18 @@ def generate_meme_coin_name(text):
 # === PREPARE TELEGRAM MESSAGE ===
 message = "📰 *Latest Foreign News Ideas for Meme Coins*\n\n"
 
-for tweet in random.sample(tweets, min(5, len(tweets))):
-    message += f"👤 *@{tweet['user']}* ({tweet['date']})\n"
-    message += f"{tweet['content']}\n"
-    message += f"[View Tweet]({tweet['url']})\n"
+for post in random.sample(posts, min(5, len(posts))):
+    title = post["data"]["title"]
+    url = "https://reddit.com" + post["data"]["permalink"]
+    message += f"📰 *{title}*\n"
+    message += f"[View Post]({url})\n"
     message += "-" * 20 + "\n"
 
 message += "\n\n*Suggested Meme Coin Names*\n\n"
 
-for tweet in random.sample(tweets, min(5, len(tweets))):
-    name = generate_meme_coin_name(tweet['content'])
+for post in random.sample(posts, min(5, len(posts))):
+    title = post["data"]["title"]
+    name = generate_meme_coin_name(title)
     message += f"• {name}\n"
 
 # === SEND TO TELEGRAM ===
@@ -72,7 +62,7 @@ payload = {
     "disable_web_page_preview": False
 }
 
-response = requests.post(url, json=payload, verify=False)
+response = requests.post(url, json=payload)
 
 if response.status_code == 200:
     print("[INFO] Telegram message sent successfully.")
