@@ -6,7 +6,9 @@ import random
 
 # === SETTINGS ===
 REDDIT_URL = "https://www.reddit.com/r/worldnews/hot.json?limit=50"
-HEADERS = {"User-Agent": "Mozilla/5.0"}  # pretend to be a browser
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+}  # pretend to be a browser
 
 # === TELEGRAM SETTINGS ===
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")  # Bot token from env
