@@ -19,7 +19,7 @@ jobs:
 
       - name: Install Python packages
         run: |
-          pip install requests
+          pip install requests beautifulsoup4
 
       - name: Run Meme Scraper
         env:
