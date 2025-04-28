@@ -1,9 +1,10 @@
-# meme.py (Nitter Version for Telegram)
+# meme.py (Nitter Version for Telegram with Delay and New Instance)
 
 import ssl
 import requests
 import random
 import os
+import time
 from bs4 import BeautifulSoup
 import urllib.parse
 
@@ -12,7 +13,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 requests.packages.urllib3.disable_warnings()
 
 # === SETTINGS ===
-NITTER_BASE_URL = "https://nitter.privacydev.net"
+NITTER_BASE_URL = "https://nitter.net"  # Switched to a new Nitter instance
 SEARCH_QUERY = "(breaking OR news) (world OR foreign)"
 TWEET_LIMIT = 50
 
@@ -52,6 +53,9 @@ try:
                 "url": NITTER_BASE_URL + link_elem.get("href"),
                 "date": date_elem.text.strip()
             })
+
+    # Implementing delay between requests to avoid rate limiting
+    time.sleep(5)  # 5-second delay between fetches
 
 except Exception as e:
     print(f"\n[ERROR] Failed to scrape tweets: {e}")
