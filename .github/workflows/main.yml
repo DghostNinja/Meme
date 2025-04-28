@@ -1,8 +1,9 @@
+# .github/workflows/meme.yml
 name: MemeScraper
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # every 6 hours
+    - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
 
 jobs:
@@ -12,14 +13,18 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install Python packages
+      - name: Install Python Packages
         run: |
-          pip install requests beautifulsoup4
+          pip install requests
+
+      - name: Install snscrape
+        run: |
+          pip install snscrape
 
       - name: Run Meme Scraper
         env:
