@@ -1,17 +1,10 @@
-import ssl
-import requests
-import random
+# meme.py
 import os
+import random
+import subprocess
 import time
-from bs4 import BeautifulSoup
-import urllib.parse
-
-# SSL Fix: Trust all certificates (for GitHub Actions)
-ssl._create_default_https_context = ssl._create_unverified_context
-requests.packages.urllib3.disable_warnings()
 
 # === SETTINGS ===
-NITTER_BASE_URL = "https://nitter.net"  # Switched to a new Nitter instance
 SEARCH_QUERIES = [
     "(breaking OR news) (world OR foreign)",
     "meme OR viral OR trending (celebrity OR pop culture)",
@@ -25,8 +18,8 @@ SEARCH_QUERIES = [
     "comedy OR satire OR funny (account OR tweet)"
 ]
 TWEET_LIMIT = 50
-MAX_RETRIES = 5  # Maximum retries before giving up
-RETRY_DELAY = 10  # Delay between retries (in seconds)
+MAX_RETRIES = 5
+RETRY_DELAY = 10
 
 # === TELEGRAM SETTINGS ===
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -36,60 +29,58 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
     print("[ERROR] Telegram credentials not set.")
     exit(1)
 
-# === SCRAPE TWEETS ===
+# === SCRAPE TWEETS WITH SNSCRAPE ===
 tweets = []
 
 def fetch_tweets():
     for query in SEARCH_QUERIES:
         print(f"[INFO] Searching for: {query}")
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(1, MAX_RETRIES + 1):
             try:
-                search_url = f"{NITTER_BASE_URL}/search?f=tweets&q={urllib.parse.quote_plus(query)}&e-nativeretweets=on"
-                headers = {"User-Agent": "Mozilla/5.0"}
-                response = requests.get(search_url, headers=headers, verify=False)
+                cmd = f"snscrape --max-results {TWEET_LIMIT} --jsonl twitter-search '{query}'"
+                print(f"[DEBUG] Running: {cmd}")
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
 
-                if response.status_code == 429:  # Rate limit error
-                    print(f"[ERROR] Rate-limited, retrying in {RETRY_DELAY} seconds...")
+                if result.returncode != 0:
+                    print(f"[ERROR] snscrape failed: {result.stderr}")
                     time.sleep(RETRY_DELAY)
-                    continue  # Retry the request
+                    continue
 
-                if response.status_code != 200:
-                    print(f"[ERROR] Failed to fetch tweets: {response.status_code}")
-                    return None
+                lines = result.stdout.strip().split("\n")
+                if not lines:
+                    print("[INFO] No tweets found, trying next query...")
+                    break
 
-                soup = BeautifulSoup(response.text, "html.parser")
-                tweet_elements = soup.find_all("div", class_="timeline-item")
-
-                for elem in tweet_elements[:TWEET_LIMIT]:
-                    content_elem = elem.find("div", class_="tweet-content")
-                    user_elem = elem.find("a", class_="username")
-                    date_elem = elem.find("span", class_="tweet-date")
-                    link_elem = date_elem.find("a") if date_elem else None
-
-                    if content_elem and user_elem and link_elem:
+                for line in lines:
+                    try:
+                        import json
+                        tweet = json.loads(line)
                         tweets.append({
-                            "content": content_elem.text.strip(),
-                            "user": user_elem.text.strip().lstrip("@"),
-                            "url": NITTER_BASE_URL + link_elem.get("href"),
-                            "date": date_elem.text.strip()
+                            "content": tweet.get("content", ""),
+                            "user": tweet.get("user", {}).get("username", ""),
+                            "url": tweet.get("url", ""),
+                            "date": tweet.get("date", "")[:10],  # Format YYYY-MM-DD
                         })
+                    except Exception as e:
+                        print(f"[ERROR] Failed to parse tweet JSON: {e}")
+                        continue
 
-                # Implementing delay between requests to avoid rate limiting
-                time.sleep(10)  # 10-second delay between fetches
+                # Minor delay between queries
+                time.sleep(5)
                 return tweets
 
-            except Exception as e:
-                print(f"\n[ERROR] Failed to scrape tweets (attempt {attempt + 1}): {e}")
+            except subprocess.TimeoutExpired:
+                print(f"[ERROR] snscrape timeout, retrying ({attempt}/{MAX_RETRIES})...")
                 time.sleep(RETRY_DELAY)
                 continue
 
-        print("[ERROR] Max retries reached. Exiting.")
-        return None
+        print("[ERROR] Max retries reached for this query. Moving to next.")
+    return None
 
 tweets = fetch_tweets()
 
 if not tweets:
-    print("\n[INFO] No tweets found! Try adjusting the query or checking the Nitter instance.")
+    print("\n[INFO] No tweets found! Try adjusting the query.")
     exit(0)
 
 # === GENERATE MEME COIN NAMES ===
@@ -114,6 +105,8 @@ for tweet in random.sample(tweets, min(5, len(tweets))):
     message += f"• {name}\n"
 
 # === SEND TO TELEGRAM ===
+import requests
+
 url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 payload = {
     "chat_id": TELEGRAM_CHAT_ID,
@@ -122,7 +115,7 @@ payload = {
     "disable_web_page_preview": False
 }
 
-response = requests.post(url, json=payload, verify=False)
+response = requests.post(url, json=payload)
 
 if response.status_code == 200:
     print("[INFO] Telegram message sent successfully.")
