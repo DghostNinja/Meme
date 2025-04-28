@@ -17,10 +17,14 @@ def get_trending_news():
     """Get trending news from Google News (RSS) without API key"""
     try:
         url = "https://news.google.com/rss"
-        response = requests.get(url, timeout=10)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         
-        soup = BeautifulSoup(response.content, 'xml')
+        # Use lxml parser (faster and more reliable)
+        soup = BeautifulSoup(response.content, 'lxml-xml')  # or 'xml' if lxml not available
         items = soup.find_all('item')[:5]  # Get top 5 news items
         
         trending_news = []
@@ -28,13 +32,20 @@ def get_trending_news():
             title = item.title.text
             # Remove the source from title (e.g., " - BBC News")
             title = title.split(' - ')[0]
-            trending_news.append(title)
+            trending_news.append(title.strip())
         
         return trending_news
     
     except Exception as e:
         logger.error(f"Error fetching trending news: {e}")
-        return ["Bitcoin hits all-time high", "Elon Musk tweets about crypto", "NFT sales surge", "Web3 adoption growing", "Metaverse expansion continues"]
+        # Default fallback news
+        return [
+            "Bitcoin hits all-time high", 
+            "Elon Musk tweets about crypto", 
+            "NFT sales surge", 
+            "Web3 adoption growing", 
+            "Metaverse expansion continues"
+        ]
 
 def generate_meme_coin_name(news_headline):
     """Generate a meme coin name based on news headline"""
@@ -43,10 +54,7 @@ def generate_meme_coin_name(news_headline):
         suffixes = ['Coin', 'Token', 'Inu', 'Fi', 'Swap', 'Moon', 'Rocket', 'Floki', 'Doge', 'Shib', 'Pump', 'Labs', 'DAO', 'Farm']
         
         # Process the headline
-        words = news_headline.split()
-        if len(words) > 3:
-            # Take first 2-3 meaningful words
-            words = [w for w in words if len(w) > 3][:3]
+        words = [w for w in news_headline.split() if w.isalpha()][:3]  # Take first 3 words, letters only
         
         # Combine with suffix
         base_name = ''.join([w.capitalize() for w in words])
@@ -74,7 +82,8 @@ def send_to_telegram(message):
         payload = {
             'chat_id': TELEGRAM_CHAT_ID,
             'text': message,
-            'parse_mode': 'HTML'
+            'parse_mode': 'HTML',
+            'disable_web_page_preview': True
         }
         
         response = requests.post(url, json=payload, timeout=10)
@@ -99,15 +108,15 @@ def main():
             coin_name = generate_meme_coin_name(news)
             meme_coins.append((news, coin_name))
         
-        # Prepare Telegram message
-        message = "<b>🔥 Trending Meme Coin Ideas 🔥</b>\n\n"
-        message += "Based on today's trending news:\n\n"
+        # Prepare Telegram message (simpler format to avoid API issues)
+        message = "🔥 *Trending Meme Coin Ideas* 🔥\n\n"
+        message += "*Based on today's news:*\n\n"
         
         for news, coin in meme_coins:
-            message += f"📰 <i>{news}</i>\n"
-            message += f"💰 <b>{coin}</b>\n\n"
+            message += f"📰 {news}\n"
+            message += f"💰 *{coin}*\n\n"
         
-        message += "Generated at: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        message += f"_Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}_"
         
         # Send to Telegram
         if send_to_telegram(message):
