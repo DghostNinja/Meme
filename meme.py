@@ -1,123 +1,122 @@
-# meme.py
 import os
 import random
-import subprocess
-import time
-
-# === SETTINGS ===
-SEARCH_QUERIES = [
-    "(breaking OR news) (world OR foreign)",
-    "meme OR viral OR trending (celebrity OR pop culture)",
-    "(breaking OR world OR outrageous) (news OR bizarre OR funny)",
-    "meme OR viral OR trending (internet OR joke OR hashtag)",
-    "crypto OR bitcoin OR meme (coin OR token OR altcoin)",
-    "(satire OR joke OR funny) (world OR news OR event)",
-    "#meme OR #crypto OR #funny OR #news",
-    "(dog OR cat OR pet) (funny OR meme OR viral)",
-    "challenge OR viral OR trend (hashtag OR meme)",
-    "comedy OR satire OR funny (account OR tweet)"
-]
-TWEET_LIMIT = 50
-MAX_RETRIES = 5
-RETRY_DELAY = 10
-
-# === TELEGRAM SETTINGS ===
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-    print("[ERROR] Telegram credentials not set.")
-    exit(1)
-
-# === SCRAPE TWEETS WITH SNSCRAPE ===
-tweets = []
-
-def fetch_tweets():
-    for query in SEARCH_QUERIES:
-        print(f"[INFO] Searching for: {query}")
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                cmd = f"snscrape --max-results {TWEET_LIMIT} --jsonl twitter-search '{query}'"
-                print(f"[DEBUG] Running: {cmd}")
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
-
-                if result.returncode != 0:
-                    print(f"[ERROR] snscrape failed: {result.stderr}")
-                    time.sleep(RETRY_DELAY)
-                    continue
-
-                lines = result.stdout.strip().split("\n")
-                if not lines:
-                    print("[INFO] No tweets found, trying next query...")
-                    break
-
-                for line in lines:
-                    try:
-                        import json
-                        tweet = json.loads(line)
-                        tweets.append({
-                            "content": tweet.get("content", ""),
-                            "user": tweet.get("user", {}).get("username", ""),
-                            "url": tweet.get("url", ""),
-                            "date": tweet.get("date", "")[:10],  # Format YYYY-MM-DD
-                        })
-                    except Exception as e:
-                        print(f"[ERROR] Failed to parse tweet JSON: {e}")
-                        continue
-
-                # Minor delay between queries
-                time.sleep(5)
-                return tweets
-
-            except subprocess.TimeoutExpired:
-                print(f"[ERROR] snscrape timeout, retrying ({attempt}/{MAX_RETRIES})...")
-                time.sleep(RETRY_DELAY)
-                continue
-
-        print("[ERROR] Max retries reached for this query. Moving to next.")
-    return None
-
-tweets = fetch_tweets()
-
-if not tweets:
-    print("\n[INFO] No tweets found! Try adjusting the query.")
-    exit(0)
-
-# === GENERATE MEME COIN NAMES ===
-def generate_meme_coin_name(text):
-    words = text.split()
-    meme_words = [w.capitalize() for w in words if len(w) > 3][:2]
-    return ''.join(meme_words) + "Coin" if meme_words else "NewsMemeCoin"
-
-# === PREPARE TELEGRAM MESSAGE ===
-message = "📰 *Latest Foreign News Ideas for Meme Coins*\n\n"
-
-for tweet in random.sample(tweets, min(5, len(tweets))):
-    message += f"👤 *@{tweet['user']}* ({tweet['date']})\n"
-    message += f"{tweet['content']}\n"
-    message += f"[View Tweet]({tweet['url']})\n"
-    message += "-" * 20 + "\n"
-
-message += "\n\n*Suggested Meme Coin Names*\n\n"
-
-for tweet in random.sample(tweets, min(5, len(tweets))):
-    name = generate_meme_coin_name(tweet['content'])
-    message += f"• {name}\n"
-
-# === SEND TO TELEGRAM ===
 import requests
+from datetime import datetime, timedelta
+import logging
+from bs4 import BeautifulSoup
 
-url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-payload = {
-    "chat_id": TELEGRAM_CHAT_ID,
-    "text": message,
-    "parse_mode": "Markdown",
-    "disable_web_page_preview": False
-}
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-response = requests.post(url, json=payload)
+# Telegram configuration
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-if response.status_code == 200:
-    print("[INFO] Telegram message sent successfully.")
-else:
-    print(f"[ERROR] Failed to send Telegram message: {response.text}")
+def get_trending_news():
+    """Get trending news from Google News (RSS) without API key"""
+    try:
+        url = "https://news.google.com/rss"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'xml')
+        items = soup.find_all('item')[:5]  # Get top 5 news items
+        
+        trending_news = []
+        for item in items:
+            title = item.title.text
+            # Remove the source from title (e.g., " - BBC News")
+            title = title.split(' - ')[0]
+            trending_news.append(title)
+        
+        return trending_news
+    
+    except Exception as e:
+        logger.error(f"Error fetching trending news: {e}")
+        return ["Bitcoin hits all-time high", "Elon Musk tweets about crypto", "NFT sales surge", "Web3 adoption growing", "Metaverse expansion continues"]
+
+def generate_meme_coin_name(news_headline):
+    """Generate a meme coin name based on news headline"""
+    try:
+        # Common crypto suffixes
+        suffixes = ['Coin', 'Token', 'Inu', 'Fi', 'Swap', 'Moon', 'Rocket', 'Floki', 'Doge', 'Shib', 'Pump', 'Labs', 'DAO', 'Farm']
+        
+        # Process the headline
+        words = news_headline.split()
+        if len(words) > 3:
+            # Take first 2-3 meaningful words
+            words = [w for w in words if len(w) > 3][:3]
+        
+        # Combine with suffix
+        base_name = ''.join([w.capitalize() for w in words])
+        suffix = random.choice(suffixes)
+        
+        # 50% chance to add a number
+        if random.random() > 0.5:
+            number = random.choice(['69', '420', '777', '1000', '2024', '999'])
+            return f"{base_name}{suffix}{number}"
+        
+        return f"{base_name}{suffix}"
+    
+    except Exception as e:
+        logger.error(f"Error generating meme coin name: {e}")
+        return "SuperDogeInu420"
+
+def send_to_telegram(message):
+    """Send message to Telegram channel"""
+    try:
+        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+            logger.error("Telegram credentials not set")
+            return False
+        
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            'chat_id': TELEGRAM_CHAT_ID,
+            'text': message,
+            'parse_mode': 'HTML'
+        }
+        
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error sending to Telegram: {e}")
+        return False
+
+def main():
+    try:
+        logger.info("Starting meme coin name generator...")
+        
+        # Get trending news
+        news_items = get_trending_news()
+        logger.info(f"Found {len(news_items)} trending news items")
+        
+        # Generate meme coin names
+        meme_coins = []
+        for news in news_items:
+            coin_name = generate_meme_coin_name(news)
+            meme_coins.append((news, coin_name))
+        
+        # Prepare Telegram message
+        message = "<b>🔥 Trending Meme Coin Ideas 🔥</b>\n\n"
+        message += "Based on today's trending news:\n\n"
+        
+        for news, coin in meme_coins:
+            message += f"📰 <i>{news}</i>\n"
+            message += f"💰 <b>{coin}</b>\n\n"
+        
+        message += "Generated at: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Send to Telegram
+        if send_to_telegram(message):
+            logger.info("Message sent to Telegram successfully")
+        else:
+            logger.error("Failed to send message to Telegram")
+    
+    except Exception as e:
+        logger.error(f"Error in main execution: {e}")
+
+if __name__ == "__main__":
+    main()
