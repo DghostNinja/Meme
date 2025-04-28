@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
+import html
 
 # Configure logging
 logging.basicConfig(
@@ -33,37 +34,45 @@ def validate_telegram_credentials():
 class TrendScraper:
     @staticmethod
     def get_google_trends():
-        """Scrape trending search terms"""
+        """Scrape trending search terms from alternative source"""
         try:
-            url = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=US"
+            # Using alternative trending news API
+            url = "https://newsapi.org/v2/top-headlines?country=us&apiKey=demo"  # Replace with your API key
             response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
             response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'lxml-xml')
-            return [item.title.text for item in soup.find_all('item')[:5]]
+            data = response.json()
+            return [article['title'] for article in data['articles'][:5]]
         except Exception as e:
-            logger.error(f"Google Trends failed: {str(e)}")
-            return ["Bitcoin ETF", "AI Crypto", "Meme Coin", "Web3 Games", "NFT Art"]
+            logger.error(f"News API failed: {str(e)}")
+            return ["Bitcoin ETF Approved", "AI Crypto Boom", "Meme Coin Rally", "Web3 Gaming", "NFT Market Surge"]
 
     @staticmethod
     def get_reddit_memes():
         """Scrape trending meme topics from Reddit"""
         try:
-            url = "https://www.reddit.com/r/memes/top.json?limit=5"
-            data = requests.get(url, headers={'User-Agent': 'MemeScraper'}).json()
+            url = "https://www.reddit.com/r/memes/top.json?limit=5&t=day"
+            headers = {'User-Agent': 'MemeCoinGenerator/1.0'}
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            data = response.json()
             return [post['data']['title'] for post in data['data']['children']]
-        except Exception:
-            return ["Doge to the moon", "WAGMI culture", "NGMI memes", "Based degeneracy", "Ape together strong"]
+        except Exception as e:
+            logger.error(f"Reddit failed: {str(e)}")
+            return ["Doge to the moon", "WAGMI season", "NGMI memes", "Ape together strong", "Based culture"]
 
     @staticmethod
     def get_crypto_trends():
-        """Get trending crypto topics"""
+        """Get trending crypto topics from CoinGecko"""
         try:
             url = "https://api.coingecko.com/api/v3/search/trending"
-            data = requests.get(url).json()
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            data = response.json()
             return [coin['item']['name'] for coin in data['coins'][:3]] + \
                    [nft['name'] for nft in data['nfts'][:2]]
-        except Exception:
-            return ["Pepe", "Wojak", "Based", "Degen", "ApeCoin"]
+        except Exception as e:
+            logger.error(f"CoinGecko failed: {str(e)}")
+            return ["Pepe", "Wojak", "Degen", "ApeCoin", "Shib"]
 
 class MemeCoinGenerator:
     # Web3 hype components
@@ -74,18 +83,12 @@ class MemeCoinGenerator:
 
     @classmethod
     def generate_hype_name(cls, trend):
-        """Generate Web3-hyped coin name"""
+        """Generate Web3-hyped coin name with proper escaping"""
+        trend = html.escape(trend)  # Escape HTML special chars
         words = [w for w in re.findall(r'\b\w{3,}\b', trend) if not w.isdigit()]
         
-        if random.random() > 0.2:
-            base = random.choice(cls.PREFIXES) + random.choice(["", " "])
-        else:
-            base = ""
-        
-        if words:
-            base += "".join([w.capitalize() for w in words[:2]])
-        else:
-            base += random.choice(cls.MEME_WORDS)
+        base = random.choice(cls.PREFIXES) if random.random() > 0.2 else ""
+        base += "".join([w.capitalize() for w in words[:2]]) if words else random.choice(cls.MEME_WORDS)
         
         suffix = random.choice(cls.SUFFIXES)
         if random.random() > 0.3:
@@ -95,34 +98,32 @@ class MemeCoinGenerator:
 
     @classmethod
     def generate_ticker(cls, name):
-        """Create exchange-style ticker"""
-        clean_name = re.sub(r'\d+', '', name)
-        letters = [c for c in clean_name if c.isupper() or c.islower()]
-        
-        if len(letters) >= 3:
-            ticker = "".join(letters[:3]).upper()
-        else:
-            ticker = clean_name[:3].upper().ljust(3, 'X')
-        
+        """Create exchange-style ticker with proper escaping"""
+        clean_name = re.sub(r'[^a-zA-Z]', '', name)
+        ticker = clean_name[:3].upper().ljust(3, 'X')
         if random.random() > 0.5:
             ticker += random.choice(cls.NUMBERS[:2])
-        
         return ticker[:5]
 
+def escape_markdown(text):
+    """Escape special MarkdownV2 characters for Telegram"""
+    escape_chars = '_*[]()~`>#+-=|{}.!'
+    return ''.join(f'\\{char}' if char in escape_chars else char for char in text)
+
 def send_telegram_report(assets):
-    """Send formatted report to Telegram"""
+    """Send properly formatted report to Telegram"""
     if not validate_telegram_credentials():
         return False
 
     message = "🔥 *VIRAL MEME COIN ALERTS* 🔥\n\n"
     for trend, name, ticker in assets:
         message += (
-            f"📈 Trend: `{trend}`\n"
-            f"🪙 Coin: `{name}`\n"
-            f"📊 Ticker: `{ticker}`\n"
-            f"🚀 Pair: `{ticker}/USDT`\n\n"
+            f"📈 *Trend:* `{escape_markdown(trend)}`\n"
+            f"🪙 *Coin Name:* `{escape_markdown(name)}`\n"
+            f"📊 *Ticker:* `{escape_markdown(ticker)}`\n"
+            f"🚀 *Pair:* `{escape_markdown(ticker)}/USDT`\n\n"
         )
-    message += f"_Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}_"
+    message += f"_Generated: {escape_markdown(datetime.now().strftime('%Y-%m-%d %H:%M'))}_"
 
     try:
         response = requests.post(
@@ -133,15 +134,14 @@ def send_telegram_report(assets):
                 'parse_mode': 'MarkdownV2',
                 'disable_web_page_preview': True
             },
-            timeout=10
+            timeout=15
         )
         
         if response.status_code == 200:
-            logger.info(f"Telegram message sent successfully! Message ID: {response.json()['result']['message_id']}")
+            logger.info("Telegram message sent successfully!")
             return True
-        else:
-            logger.error(f"Telegram API Error: {response.status_code} - {response.text}")
-            return False
+        logger.error(f"Telegram API Error: {response.status_code} - {response.text}")
+        return False
             
     except Exception as e:
         logger.error(f"Telegram connection failed: {str(e)}")
@@ -155,7 +155,7 @@ def main():
             TrendScraper.get_google_trends() +
             TrendScraper.get_reddit_memes() +
             TrendScraper.get_crypto_trends()
-        )[:8]
+        )[:8]  # Get top 8 trends
         
         assets = []
         for trend in trends:
