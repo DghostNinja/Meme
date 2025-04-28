@@ -1,0 +1,30 @@
+name: Run Meme Scraper
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *' # every 6 hours (you can change it)
+
+jobs:
+  meme:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        run: |
+          pip install snscrape requests
+
+      - name: Run Meme Script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python meme.py
